@@ -2028,7 +2028,7 @@ Exit_UpgradeLoader:
 	return bSuccess;
 }
 
-bool yield_gpt(STRUCT_RKDEVICE_DESC &dev, void (*yield)(u32 i, const gpt_entry *gptEntry, const char *partName))
+bool yield_gpt(STRUCT_RKDEVICE_DESC &dev, std::function<void(CRKComm *pComm, u32 i, const gpt_entry *gptEntry, const char *partName)> yield)
 {
 	if (!check_device_type(dev, RKUSB_LOADER | RKUSB_MASKROM))
 		return false;
@@ -2511,75 +2511,84 @@ Exit_ReadGPT:
 	}
 	return bSuccess;
 }
-bool read_lba(STRUCT_RKDEVICE_DESC &dev, UINT uiBegin, UINT uiLen, char *szFile)
+
+bool read_lba(CRKComm *pComm, UINT uiBegin, UINT uiLen, const char *szFile)
 {
-	if (!check_device_type(dev, RKUSB_LOADER | RKUSB_MASKROM))
-		return false;
-	CRKUsbComm *pComm = NULL;
 	FILE *file = NULL;
-	bool bRet, bFirst = true, bSuccess = false;
+	bool bFirst = true, bSuccess = false;
 	int iRet;
 	UINT iTotalRead = 0,iRead = 0;
 	int nSectorSize = 512;
 	BYTE pBuf[nSectorSize * DEFAULT_RW_LBA];
-	pComm =  new CRKUsbComm(dev, g_pLogObject, bRet);
-	if (bRet) {
-		if(szFile) {
-			file = fopen(szFile, "wb+");
-			if( !file ) {
-				printf("Read LBA failed, err=%d, can't open file: %s\r\n", errno, szFile);
-				goto Exit_ReadLBA;
-			}
+	if(szFile) {
+		file = fopen(szFile, "wb+");
+		if( !file ) {
+			printf("Read LBA failed, err=%d, can't open file: %s\r\n", errno, szFile);
+			goto Exit_ReadLBA;
 		}
+	}
 
-		while(uiLen > 0) {
-			memset(pBuf, 0, nSectorSize * DEFAULT_RW_LBA);
-			iRead = (uiLen >= DEFAULT_RW_LBA) ? DEFAULT_RW_LBA : uiLen;
-			iRet = pComm->RKU_ReadLBA( uiBegin + iTotalRead, iRead, pBuf);
-			if(ERR_SUCCESS == iRet) {
-				uiLen -= iRead;
-				iTotalRead += iRead;
+	while(uiLen > 0) {
+		memset(pBuf, 0, nSectorSize * DEFAULT_RW_LBA);
+		iRead = (uiLen >= DEFAULT_RW_LBA) ? DEFAULT_RW_LBA : uiLen;
+		iRet = pComm->RKU_ReadLBA( uiBegin + iTotalRead, iRead, pBuf);
+		if(ERR_SUCCESS == iRet) {
+			uiLen -= iRead;
+			iTotalRead += iRead;
 
-				if(szFile) {
-					fwrite(pBuf, 1, iRead * nSectorSize, file);
-					if (bFirst){
-						if (iTotalRead >= 1024)
-							printf("Read LBA to file (%d%%)\r\n", (iTotalRead / 1024) * 100 / ((uiLen + iTotalRead) / 1024));
-						else
-							printf("Read LBA to file (%d%%)\r\n", iTotalRead * 100 / (uiLen + iTotalRead));
-						bFirst = false;
-					} else {
-						CURSOR_MOVEUP_LINE(1);
-						CURSOR_DEL_LINE;
-						if (iTotalRead >= 1024)
-							printf("Read LBA to file (%d%%)\r\n", (iTotalRead / 1024) * 100 / ((uiLen + iTotalRead) / 1024));
-						else
-							printf("Read LBA to file (%d%%)\r\n", iTotalRead * 100 / (uiLen + iTotalRead));
-					}
+			if(szFile) {
+				fwrite(pBuf, 1, iRead * nSectorSize, file);
+				if (bFirst){
+					if (iTotalRead >= 1024)
+						printf("Read LBA to file (%d%%)\r\n", (iTotalRead / 1024) * 100 / ((uiLen + iTotalRead) / 1024));
+					else
+						printf("Read LBA to file (%d%%)\r\n", iTotalRead * 100 / (uiLen + iTotalRead));
+					bFirst = false;
+				} else {
+					CURSOR_MOVEUP_LINE(1);
+					CURSOR_DEL_LINE;
+					if (iTotalRead >= 1024)
+						printf("Read LBA to file (%d%%)\r\n", (iTotalRead / 1024) * 100 / ((uiLen + iTotalRead) / 1024));
+					else
+						printf("Read LBA to file (%d%%)\r\n", iTotalRead * 100 / (uiLen + iTotalRead));
 				}
-				else
-					PrintData(pBuf, nSectorSize * iRead);
-			} else {
-				if (g_pLogObject)
-					g_pLogObject->Record("Error: RKU_ReadLBA failed, err=%d", iRet);
-
-				printf("Read LBA failed!\r\n");
-				goto Exit_ReadLBA;
 			}
+			else
+				PrintData(pBuf, nSectorSize * iRead);
+		} else {
+			if (g_pLogObject)
+				g_pLogObject->Record("Error: RKU_ReadLBA failed, err=%d", iRet);
+
+			printf("Read LBA failed!\r\n");
+			goto Exit_ReadLBA;
 		}
-		bSuccess = true;
-	} else {
-		printf("Read LBA quit, creating comm object failed!\r\n");
 	}
+	bSuccess = true;
 Exit_ReadLBA:
-	if (pComm) {
-		delete pComm;
-		pComm = NULL;
-	}
 	if (file)
 		fclose(file);
 	return bSuccess;
 }
+
+bool read_lba(STRUCT_RKDEVICE_DESC &dev, UINT uiBegin, UINT uiLen, const char *szFile)
+{
+	if (!check_device_type(dev, RKUSB_LOADER | RKUSB_MASKROM))
+		return false;
+	CRKUsbComm *pComm = NULL;
+	bool bRet = false, bSuccess = false;
+	pComm =  new CRKUsbComm(dev, g_pLogObject, bRet);
+	if (bRet) {
+		bSuccess = bRet && read_lba(pComm, uiBegin, uiLen, szFile);
+	} else {
+		printf("Read LBA quit, creating comm object failed!\r\n");
+	}
+	if (pComm) {
+		delete pComm;
+		pComm = NULL;
+	}
+	return bSuccess;
+}
+
 bool erase_ubi_block(STRUCT_RKDEVICE_DESC &dev, u32 uiOffset, u32 uiPartSize)
 {
 	STRUCT_FLASHINFO_CMD info;
