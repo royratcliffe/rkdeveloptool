@@ -3302,6 +3302,24 @@ bool handle_command(int argc, char* argv[], CRKScan *pScan)
 			}
 		} else
 			printf("Parameter of [PPT] command is invalid, please check help!\r\n");
+	} else if(strcmp(strCmd.c_str(), "RLA") == 0) {
+		if (argc == 2) {
+			bSuccess = yield_gpt(dev, [&dev](auto pComm, auto, auto gptEntry, auto partName) {
+				UINT len = gptEntry->ending_lba + 1 - gptEntry->starting_lba;
+				std::string file = std::string(partName) + ".img";
+				printf("lr 0x%llx 0x%x %s\r\n", gptEntry->starting_lba, len, file.c_str());
+				if (!read_lba(pComm, gptEntry->starting_lba, len, file.c_str())) {
+					printf("Read error!\r\n");
+					exit(1);
+				}
+			});
+			if (!bSuccess) {
+				bSuccess = print_parameter(dev);
+				if (!bSuccess)
+					printf("Not found any partition table!\r\n");
+			}
+		} else
+			printf("Parameter of [RLA] command is invalid, please check help!\r\n");
 	} else {
 		printf("command is invalid!\r\n");
 		usage();
