@@ -2027,7 +2027,8 @@ Exit_UpgradeLoader:
 		delete []pIDBData;
 	return bSuccess;
 }
-bool print_gpt(STRUCT_RKDEVICE_DESC &dev)
+
+bool yield_gpt(STRUCT_RKDEVICE_DESC &dev, void (*yield)(u32 i, const gpt_entry *gptEntry, const char *partName))
 {
 	if (!check_device_type(dev, RKUSB_LOADER | RKUSB_MASKROM))
 		return false;
@@ -2052,18 +2053,15 @@ bool print_gpt(STRUCT_RKDEVICE_DESC &dev)
 	iRet = pComm->RKU_ReadLBA( 0, 34, master_gpt);
 	if(ERR_SUCCESS == iRet) {
 		if (gptHead->signature != le64_to_cpu(GPT_HEADER_SIGNATURE)) {
-			goto Exit_PrintGpt;
+			goto Exit_YieldGpt;
 		}
 
 	} else {
 		if (g_pLogObject)
 				g_pLogObject->Record("Error: read gpt failed, err=%d", iRet);
 		printf("Read GPT failed!\r\n");
-		goto Exit_PrintGpt;
+		goto Exit_YieldGpt;
 	}
-
-	printf("**********Partition Info(GPT)**********\r\n");
-	printf("NO  LBA start LBA end   Name                \r\n");
 	for (i = 0; i < le32_to_cpu(gptHead->num_partition_entries); i++) {
 		gptEntry = (gpt_entry *)(master_gpt + 2 * SECTOR_SIZE + i * GPT_ENTRY_SIZE);
 		if (memcmp(zerobuf, (u8 *)gptEntry, GPT_ENTRY_SIZE) == 0)
@@ -2074,14 +2072,24 @@ bool print_gpt(STRUCT_RKDEVICE_DESC &dev)
 			partName[j] = (char)gptEntry->partition_name[j];
 			j++;
 		}
-		printf("%02d  %08llX  %08llX  %s\r\n", i, le64_to_cpu(gptEntry->starting_lba), le64_to_cpu(gptEntry->ending_lba), partName);
+		yield(pComm, i, gptEntry, partName);
 	}
 	bSuccess = true;
-Exit_PrintGpt:
+Exit_YieldGpt:
 	if (pComm)
 		delete pComm;
 	return bSuccess;
 }
+
+bool print_gpt(STRUCT_RKDEVICE_DESC &dev)
+{
+	printf("**********Partition Info(GPT)**********\r\n");
+	printf("NO  LBA start LBA end   Name\r\n");
+	return yield_gpt(dev, [](auto, auto i, auto gptEntry, auto partName) {
+		printf("%02d  %08llX  %08llX  %s\r\n", i, le64_to_cpu(gptEntry->starting_lba), le64_to_cpu(gptEntry->ending_lba), partName);
+	});
+}
+
 bool print_parameter(STRUCT_RKDEVICE_DESC &dev)
 {
 	if (!check_device_type(dev, RKUSB_LOADER | RKUSB_MASKROM))
