@@ -48,6 +48,7 @@ void usage()
 	printf("DownloadBoot:\t\tdb <Loader>\r\n");
 	printf("UpgradeLoader:\t\tul <Loader>\r\n");
 	printf("ReadLBA:\t\trl  <BeginSec> <SectorLen> <File>\r\n");
+	printf("ReadAllLBA:\t\trla \r\n");
 	printf("WriteLBA:\t\twl  <BeginSec> <File>\r\n");
 	printf("WriteLBA:\t\twlx  <PartitionName> <File>\r\n");
 	printf("WriteGPT:\t\tgpt <gpt partition table>\r\n");
